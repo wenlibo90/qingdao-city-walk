@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0c1218" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c1218'/%3E%3Ctext x='16' y='22' font-size='18' text-anchor='middle' fill='%23e99352'%3E%E9%9D%92%3C/text%3E%3C/svg%3E" />
+    <title>青岛 · 山海城漫游</title>
+  </head>
+  <body>
+    <div id="viewport"></div>
+
+    <div id="hud">
+      <header class="topbar">
+        <div class="brand">
+          <span class="seal">青</span>
+          <div>
+            <h1>青岛 · 山海城漫游</h1>
+            <p>QINGDAO COASTAL WALK / PROCEDURAL CITY</p>
+          </div>
+        </div>
+        <div class="topmeta">
+          <span class="tag" id="backend-tag">WEBGPU · TSL</span>
+          <span class="attribution">OSM 地理数据 © OpenStreetMap contributors · ODbL</span>
+          <span class="attribution">地形 DEM · AWS Terrain Tiles / Mapzen</span>
+        </div>
+      </header>
+
+      <aside id="panel">
+        <section class="block">
+          <div class="block-head">
+            <span class="label">时间 / 光线</span>
+            <div class="time-readout"><strong id="time-label">17:30</strong><span id="phase-label">黄金时刻</span></div>
+          </div>
+          <input id="time-slider" type="range" min="0" max="24" step="0.05" value="17.5" aria-label="时间" />
+          <div class="chips" id="preset-chips"></div>
+        </section>
+
+        <section class="block">
+          <div class="block-head">
+            <span class="label">街道路名检索</span>
+            <span class="mini" id="street-count"></span>
+          </div>
+          <div class="search-wrap">
+            <input id="street-input" type="search" placeholder="中山路 / 韶关路 / 澳门路 …" autocomplete="off" spellcheck="false" />
+            <span class="search-icon">⌕</span>
+          </div>
+          <div id="street-results" class="results" role="listbox"></div>
+        </section>
+
+        <section class="block">
+          <div class="block-head">
+            <span class="label">地标传送</span>
+            <span class="mini">点击抵达</span>
+          </div>
+          <div class="chips wrap" id="teleport-chips"></div>
+        </section>
+
+        <section class="block actions">
+          <button id="tour-btn" class="primary">自动巡游</button>
+          <button id="view-btn">第三人称</button>
+        </section>
+      </aside>
+
+      <div id="crosshair" class="crosshair"></div>
+
+      <div id="controls-hint">
+        <span><b>W A S D</b> 步行</span>
+        <span><b>Shift</b> 加速</span>
+        <span><b>鼠标</b> 视角</span>
+        <span><b>V</b> 视角切换</span>
+        <span><b>Esc</b> 释放鼠标</span>
+      </div>
+
+      <div id="stats">
+        <span id="fps">-- FPS</span>
+        <span id="stat-buildings">-- 栋建筑</span>
+        <span id="stat-calls">-- draw calls</span>
+      </div>
+
+      <div id="toast"></div>
+      <div id="mode-tip">点击画面锁定鼠标，开始步行</div>
+    </div>
+
+    <div id="fade"></div>
+
+    <div id="loading">
+      <div class="loading-card">
+        <div class="loading-title"><span class="seal">青</span><div><h2>正在生成青岛老城</h2><p>全部几何体在浏览器内实时构建</p></div></div>
+        <div class="loading-status" id="loading-status">读取 OSM 地理数据…</div>
+        <div class="loading-bar"><span id="loading-bar"></span></div>
+        <div class="loading-note" id="loading-note">OSM 建筑轮廓 / 道路中心线 / 海岸线 / 绿地水系 / 真实 DEM</div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

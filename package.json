@@ -1,0 +1,26 @@
+{
+  "name": "qingdao-city-walk",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "青岛山海城程序化城市漫游 · Three.js WebGPU + TSL",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "prepare:osm": "node scripts/prepare-osm.mjs"
+  },
+  "dependencies": {
+    "earcut": "^3.0.1",
+    "osmtogeojson": "^3.0.0-beta.5",
+    "pngjs": "^7.0.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@types/earcut": "^3.0.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/three": "^0.187.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4"
+  }
+}

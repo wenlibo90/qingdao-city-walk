@@ -1,0 +1,21 @@
+{
+  "bbox": {
+    "west": 120.303,
+    "south": 36.0435,
+    "east": 120.392,
+    "north": 36.077
+  },
+  "z": 15,
+  "xMin": -1614.1326165022642,
+  "zMin": -2100.225631421432,
+  "xMax": 8293.30206409893,
+  "zMax": 2512.8497980916873,
+  "cell": 8,
+  "cols": 1240,
+  "rows": 578,
+  "scale": 10,
+  "min": 0,
+  "max": 141.9002264940399,
+  "source": "Mapzen/AWS Terrain Tiles (Terrarium), 3DEP/ETOPO",
+  "license": "Public domain / CC-BY 4.0 (see terrain tiles attribution)"
+}

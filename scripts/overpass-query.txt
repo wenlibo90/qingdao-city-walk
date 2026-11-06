@@ -1,0 +1,22 @@
+[out:json][timeout:180];
+(
+  way["building"](36.0435,120.3030,36.0770,120.3920);
+  relation["building"](36.0435,120.3030,36.0770,120.3920);
+  way["building:part"](36.0435,120.3030,36.0770,120.3920);
+  relation["building:part"](36.0435,120.3030,36.0770,120.3920);
+  way["highway"](36.0435,120.3030,36.0770,120.3920);
+  way["natural"="coastline"](36.0435,120.3030,36.0770,120.3920);
+  relation["natural"="coastline"](36.0435,120.3030,36.0770,120.3920);
+  way["natural"="water"](36.0435,120.3030,36.0770,120.3920);
+  relation["natural"="water"](36.0435,120.3030,36.0770,120.3920);
+  way["man_made"="pier"](36.0435,120.3030,36.0770,120.3920);
+  way["leisure"~"park|garden|pitch"](36.0435,120.3030,36.0770,120.3920);
+  relation["leisure"~"park|garden|pitch"](36.0435,120.3030,36.0770,120.3920);
+  way["landuse"~"grass|forest|meadow|recreation_ground"](36.0435,120.3030,36.0770,120.3920);
+  relation["landuse"~"grass|forest|meadow|recreation_ground"](36.0435,120.3030,36.0770,120.3920);
+  way["natural"~"wood|beach|sand|scrub"](36.0435,120.3030,36.0770,120.3920);
+  relation["natural"~"wood|beach|sand|scrub"](36.0435,120.3030,36.0770,120.3920);
+  way["tourism"~"attraction|museum|viewpoint"](36.0435,120.3030,36.0770,120.3920);
+  relation["tourism"~"attraction|museum|viewpoint"](36.0435,120.3030,36.0770,120.3920);
+);
+out geom;
