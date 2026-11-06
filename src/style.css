@@ -39,22 +39,16 @@ html, body {
   justify-content: space-between;
   align-items: flex-start;
   padding: 22px 26px;
-  background: linear-gradient(180deg, rgba(5, 9, 13, 0.55), transparent);
 }
 
 .brand { display: flex; align-items: center; gap: 12px; }
-.brand .seal, .loading-title .seal {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(233, 147, 82, 0.65);
-  color: var(--accent);
-  font-family: "Songti SC", "SimSun", serif;
-  font-size: 22px;
-  border-radius: 9px;
-  background: rgba(9, 14, 19, 0.4);
-  box-shadow: inset 0 0 18px rgba(233, 147, 82, 0.12);
+.brand-logo {
+  display: block;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  object-fit: cover;
 }
 .brand h1 {
   margin: 0;
@@ -100,6 +94,7 @@ html, body {
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(233, 147, 82, 0.35) transparent;
+  transition: width 0.24s ease, padding 0.24s ease, background 0.24s ease, border-color 0.24s ease, box-shadow 0.24s ease;
 }
 
 .block { padding: 13px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
@@ -264,23 +259,6 @@ html, body {
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-#mode-tip {
-  position: absolute;
-  left: 50%;
-  top: 58%;
-  transform: translateX(-50%);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  color: rgba(240, 244, 246, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 6px 13px;
-  border-radius: 99px;
-  background: rgba(8, 13, 18, 0.4);
-  opacity: 0;
-  transition: opacity 0.4s ease;
-}
-#mode-tip.show { opacity: 1; }
-
 #fade {
   position: fixed;
   inset: 0;
@@ -292,26 +270,40 @@ html, body {
 }
 #fade.on { opacity: 1; }
 
-#loading {
+.boot-status {
   position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(32, 48, 60, 0.55), transparent 55%),
-    linear-gradient(160deg, #070b0f, #0c141b 60%, #070b0f);
-  transition: opacity 0.7s ease, visibility 0.7s ease;
+  left: 18px;
+  bottom: 58px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(8, 13, 18, 0.55);
+  backdrop-filter: blur(8px);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: rgba(233, 240, 243, 0.78);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
 }
-#loading.done { opacity: 0; visibility: hidden; }
-.loading-card { width: min(420px, calc(100vw - 48px)); }
-.loading-title { display: flex; align-items: center; gap: 14px; margin-bottom: 26px; }
-.loading-title h2 { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: 0.12em; }
-.loading-title p { margin: 5px 0 0; font-size: 10px; color: var(--muted); letter-spacing: 0.14em; }
-.loading-status { font-size: 11.5px; color: rgba(230, 237, 240, 0.7); letter-spacing: 0.06em; margin-bottom: 10px; }
-.loading-bar { height: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; border-radius: 99px; }
-.loading-bar span { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #c66b3d, #f0b47e); transition: width 0.4s ease; }
-.loading-note { margin-top: 12px; font-size: 9.5px; color: rgba(220, 228, 232, 0.34); letter-spacing: 0.08em; }
+.boot-status.done { opacity: 0; transform: translateY(6px); }
+.boot-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #e99352;
+  animation: bootPulse 1.1s ease-in-out infinite;
+}
+.boot-pct { color: rgba(233, 147, 82, 0.9); font-variant-numeric: tabular-nums; }
+.boot-error { color: #ffb4a0; border-color: rgba(233, 120, 90, 0.45); }
+@keyframes bootPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
 
 @media (max-width: 760px) {
   .topbar { padding: 14px 16px; }

@@ -1,4 +1,3 @@
-import './style.css';
 import * as THREE from 'three';
 import { RenderPipeline, WebGPURenderer } from 'three/webgpu';
 import { pass } from 'three/tsl';
@@ -30,14 +29,26 @@ import { UI, type TeleportTarget } from './ui';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const viewport = $<HTMLDivElement>('viewport');
-const loadingStatus = $<HTMLElement>('loading-status');
-const loadingBar = $<HTMLElement>('loading-bar');
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
-function setLoading(text: string, progress: number) {
-  loadingStatus.textContent = text;
-  loadingBar.style.width = `${Math.round(progress * 100)}%`;
+function createBootStatus() {
+  const el = document.createElement('div');
+  el.className = 'boot-status';
+  el.innerHTML = '<span class="boot-dot"></span><span class="boot-text">正在构建城市…</span><span class="boot-pct">0%</span>';
+  document.body.appendChild(el);
+  const text = el.querySelector('.boot-text') as HTMLElement;
+  const pct = el.querySelector('.boot-pct') as HTMLElement;
+  return {
+    update(message: string, progress: number) {
+      text.textContent = message;
+      pct.textContent = `${Math.round(progress * 100)}%`;
+    },
+    done() {
+      el.classList.add('done');
+      window.setTimeout(() => el.remove(), 600);
+    }
+  };
 }
 
 async function createRenderer(): Promise<{ renderer: WebGPURenderer; backend: string }> {
@@ -59,6 +70,17 @@ function yawTo(fromX: number, fromZ: number, toX: number, toZ: number): number {
 }
 
 async function main() {
+  // 数据请求与渲染器初始化并行，尽早出画面。
+  const worldPromise = loadWorld(`${import.meta.env.BASE_URL}data/qingdao-city.geojson`);
+  const demPromise = (async () => {
+    const meta = await fetch(`${import.meta.env.BASE_URL}data/qingdao-dem.json`).then((r) => r.json());
+    const bin = await fetch(`${import.meta.env.BASE_URL}data/qingdao-dem.bin`).then((r) => r.arrayBuffer());
+    setDemGrid({ ...meta, data: new Int16Array(bin) });
+  })().catch((error) => console.warn('DEM 加载失败，回退到解析地形', error));
+
+  const boot = createBootStatus();
+  boot.update('正在准备渲染器…', 0.04);
+
   const { renderer, backend } = await createRenderer();
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6));
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -116,27 +138,79 @@ async function main() {
     pipeline = null;
   }
 
-  setLoading('读取 OSM 地理数据…', 0.06);
-  await nextFrame();
-  const data = await loadWorld(`${import.meta.env.BASE_URL}data/qingdao-city.geojson`);
-  setLoading(`解析 ${data.buildings.length} 栋建筑 / ${data.roads.length} 段道路…`, 0.14);
-  await nextFrame();
-
-  setLoading('加载真实 DEM 高程网格…', 0.19);
-  await nextFrame();
-  try {
-    const meta = await fetch(`${import.meta.env.BASE_URL}data/qingdao-dem.json`).then((r) => r.json());
-    const bin = await fetch(`${import.meta.env.BASE_URL}data/qingdao-dem.bin`).then((r) => r.arrayBuffer());
-    setDemGrid({ ...meta, data: new Int16Array(bin) });
-  } catch (error) {
-    console.warn('DEM 加载失败，回退到解析地形', error);
-  }
-
   const time = new TimeOfDay(scene, renderer, sun, hemi, (strength) => {
     if (bloomPass) bloomPass.strength.value = strength;
   });
 
-  setLoading('构建海岸线、真实地形与水域…', 0.3);
+  const [signalX, signalZ] = lonLatToLocal(120.32636, 36.06675);
+  const startXZ: [number, number] = [signalX - 14, signalZ + 18];
+  const startYaw = 2.4;
+
+  camera.position.set(startXZ[0], 98, startXZ[1]);
+  camera.rotation.set(-0.08, startYaw, 0);
+
+  let player: PlayerController | null = null;
+  let tour: CameraTour | null = null;
+  let ui: UI | null = null;
+  let landmarks: ReturnType<typeof createLandmarks> | null = null;
+  let toastTimer = 0;
+  const cityLights: THREE.PointLight[] = [];
+  const focus = new THREE.Vector3();
+  const clockStart = performance.now();
+  let last = performance.now();
+  let frameCount = 0;
+  let statTime = 0;
+  let fps = 60;
+
+  // 先渲染天空和海面，城市几何在后台逐段生成并加入场景。
+  renderer.setAnimationLoop((now) => {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    time.update(dt);
+    if (tour?.active) {
+      tour.update(dt);
+      focus.copy(camera.position);
+    } else if (player) {
+      player.update(dt);
+      focus.copy(player.position);
+      if (player.position.y < -5) player.place(startXZ[0], startXZ[1], startYaw, -0.08);
+    } else {
+      focus.copy(camera.position);
+    }
+
+    sky.position.copy(camera.position);
+    sky.position.y -= 40;
+
+    sun.position.copy(focus).addScaledVector(time.lightDirection, 360);
+    sun.target.position.copy(focus);
+    sun.target.updateMatrixWorld();
+
+    if (landmarks) landmarks.update(time.night, (now - clockStart) / 1000);
+    for (const l of cityLights) l.intensity = time.night * 18;
+
+    if (pipeline) pipeline.render();
+    else renderer.render(scene, camera);
+
+    frameCount++;
+    statTime += dt;
+    if (statTime > 0.5) {
+      fps = frameCount / statTime;
+      frameCount = 0;
+      statTime = 0;
+      const calls = (renderer.info?.render as unknown as { drawCalls?: number; calls?: number })?.drawCalls
+        ?? (renderer.info?.render as unknown as { calls?: number })?.calls
+        ?? 0;
+      ui?.setFps(fps, calls);
+    }
+    ui?.setTime(time.hour, time.phaseLabel);
+  });
+
+  boot.update('读取地理数据…', 0.14);
+  const data = await worldPromise;
+  await demPromise;
+
+  boot.update(`构建 ${data.buildings.length} 栋建筑的地形…`, 0.3);
   await nextFrame();
   const terrainMat = createTerrainMaterial();
   const terrainMesh = new THREE.Mesh(generateTerrain(data.landOuter, data.water, data.islets), terrainMat);
@@ -161,7 +235,7 @@ async function main() {
   greenMesh.receiveShadow = true;
   scene.add(greenMesh);
 
-  setLoading('程序化挤出建筑体块与红瓦屋顶…', 0.44);
+  boot.update('程序化挤出建筑体块与红瓦屋顶…', 0.46);
   await nextFrame();
   const buildingMat = createBuildingMaterial();
   const result = generateBuildings(data);
@@ -174,7 +248,7 @@ async function main() {
 
   const collision = new CollisionWorld(result.colliders);
 
-  setLoading('铺设道路、台阶与广场…', 0.6);
+  boot.update('铺设道路、台阶与广场…', 0.62);
   await nextFrame();
   const roadGeo = generateRoads(data);
   if (roadGeo) {
@@ -202,13 +276,13 @@ async function main() {
     if (pierLamps) scene.add(pierLamps.poles, pierLamps.bulbs);
   }
 
-  const cityLights: THREE.PointLight[] = [
+  cityLights.push(
     new THREE.PointLight('#ffc98a', 0, 65, 1.6),
     new THREE.PointLight('#ffc98a', 0, 65, 1.6),
     new THREE.PointLight('#ffc98a', 0, 65, 1.6),
     new THREE.PointLight('#ffd39a', 0, 90, 1.7),
     new THREE.PointLight('#ffc98a', 0, 95, 1.7)
-  ];
+  );
   const lightPositions: Array<[number, number, number]> = [
     [-335.8, 7, 118],
     [-290, 7, 300],
@@ -229,105 +303,100 @@ async function main() {
     scene.add(l);
   });
 
-  const landmarks = createLandmarks(data);
+  landmarks = createLandmarks(data);
   scene.add(landmarks.group);
 
-  setLoading('准备步行碰撞与传送点…', 0.74);
+  boot.update('准备步行碰撞与传送点…', 0.78);
   await nextFrame();
 
   const character = createCharacter();
   scene.add(character);
-  const player = new PlayerController(camera, data, collision, character, renderer.domElement as HTMLElement);
-
-  const startXZ: [number, number] = [-335.8, 100];
-  player.place(startXZ[0], startXZ[1], Math.PI + 0.2, -0.015);
+  player = new PlayerController(camera, data, collision, character, renderer.domElement as HTMLElement);
+  player.place(startXZ[0], startXZ[1], startYaw, -0.08);
 
   const targets = buildTargets(data, player);
-  const tour = new CameraTour(camera);
+  tour = new CameraTour(camera);
   tour.setKeys(buildTourKeys(targets));
 
-  let toastTimer = 0;
   const fade = $<HTMLDivElement>('fade');
 
-  const ui = new UI(
+  const uiInstance = new UI(
     data,
     {
       onPreset: (hour) => {
         time.setHour(hour, true);
-        ui.toast(`切换光线：${phaseName(hour)}`);
+        uiInstance.toast(`切换光线：${phaseName(hour)}`);
       },
       onSlider: (hour) => time.setHour(hour, false),
       onStreet: (street) => teleportToStreet(street),
-      onTeleport: (target) => teleportTo(target),
+      onTeleport: (target) => void teleportTo(target),
       onToggleTour: () => {
-        if (tour.active) stopTour();
+        if (tour!.active) stopTour();
         else startTour();
       },
       onToggleView: () => {
-        if (tour.active) return;
-        player.toggleMode();
+        if (tour!.active) return;
+        player!.toggleMode();
       }
     },
     targets
   );
-  ui.setBackend(backend);
-  ui.setMode(player.mode);
-  ui.showModeTip();
-  window.setTimeout(() => ui.hideModeTip(), 6000);
+  ui = uiInstance;
+  uiInstance.setBackend(backend);
+  uiInstance.setMode(player.mode);
 
   player.onModeChange = (mode) => {
-    ui.setMode(mode);
-    ui.toast(mode === 'first' ? '第一人称步行' : '第三人称跟随');
+    uiInstance.setMode(mode);
+    uiInstance.toast(mode === 'first' ? '第一人称步行' : '第三人称跟随');
   };
 
   async function teleportTo(target: TeleportTarget) {
     window.clearTimeout(toastTimer);
     fade.classList.add('on');
     await new Promise((r) => setTimeout(r, 270));
-    player.place(target.x, target.z, target.yaw);
-    ui.hideModeTip();
+    player!.place(target.x, target.z, target.yaw);
     fade.classList.remove('on');
-    ui.toast(`已抵达 ${target.name}`);
-    toastTimer = window.setTimeout(() => ui.toast(''), 2200);
+    uiInstance.toast(`已抵达 ${target.name}`);
+    toastTimer = window.setTimeout(() => uiInstance.toast(''), 2200);
   }
 
   function teleportToStreet(street: StreetEntry) {
-    if (tour.active) stopTour();
-    const [x, z] = nearestPointOnStreet(player.position.x, player.position.z, street.points);
-    const yaw = player.yaw;
+    if (tour!.active) stopTour();
+    const [x, z] = nearestPointOnStreet(player!.position.x, player!.position.z, street.points);
+    const yaw = player!.yaw;
     void teleportTo({ id: street.name, name: street.name, caption: '街道', x, z, yaw });
   }
 
   let saved: { x: number; z: number; yaw: number; pitch: number } | null = null;
 
   function startTour() {
-    if (tour.active) return;
-    saved = { x: player.position.x, z: player.position.z, yaw: player.yaw, pitch: player.pitch };
-    player.enabled = false;
-    player.exitPointerLock();
+    if (tour!.active) return;
+    saved = { x: player!.position.x, z: player!.position.z, yaw: player!.yaw, pitch: player!.pitch };
+    player!.enabled = false;
+    player!.exitPointerLock();
     character.visible = false;
-    ui.setTour(true);
-    ui.showCrosshair(false);
-    ui.toast('自动巡游中 · 按 Esc 退出', 0);
-    tour.start(() => endTour(false));
+    uiInstance.setTour(true);
+    uiInstance.showCrosshair(false);
+    uiInstance.toast('自动巡游中 · 按 Esc 退出', 0);
+    tour!.start(() => endTour(false));
   }
 
   function stopTour() {
-    if (!tour.active) return;
-    tour.stop();
+    if (!tour!.active) return;
+    tour!.stop();
     endTour(true);
   }
 
   function endTour(restore: boolean) {
-    player.enabled = true;
-    if (restore && saved) player.place(saved.x, saved.z, saved.yaw, saved.pitch);
-    ui.setTour(false);
-    ui.showCrosshair(player.mode === 'first');
-    ui.toast(restore ? '已退出巡游' : '巡游结束，点击画面开始步行');
+    player!.enabled = true;
+    if (restore && saved) player!.place(saved.x, saved.z, saved.yaw, saved.pitch);
+    uiInstance.setTour(false);
+    uiInstance.showCrosshair(player!.mode === 'first');
+    uiInstance.toast(restore ? '已退出巡游' : '巡游结束，点击画面开始步行');
   }
 
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && tour.active) stopTour();
+    if (e.key === 'Escape' && tour!.active) stopTour();
   });
 
   const resize = () => {
@@ -337,65 +406,13 @@ async function main() {
   };
   window.addEventListener('resize', resize);
 
-  setLoading('编译 TSL 材质…', 0.9);
-  await nextFrame();
-
-  let last = performance.now();
-  let frameCount = 0;
-  let statTime = 0;
-  let fps = 60;
-  const focus = new THREE.Vector3();
-  const clockStart = performance.now();
-
-  renderer.setAnimationLoop((now) => {
-    const dt = Math.min(0.05, (now - last) / 1000);
-    last = now;
-
-    time.update(dt);
-    if (tour.active) {
-      tour.update(dt);
-      focus.copy(camera.position);
-    } else {
-      player.update(dt);
-      focus.copy(player.position);
-      if (player.position.y < -5) player.place(startXZ[0], startXZ[1], Math.PI + 0.2);
-    }
-
-    sky.position.copy(camera.position);
-    sky.position.y -= 40;
-
-    sun.position.copy(focus).addScaledVector(time.lightDirection, 360);
-    sun.target.position.copy(focus);
-    sun.target.updateMatrixWorld();
-
-    landmarks.update(time.night, (now - clockStart) / 1000);
-    for (const l of cityLights) l.intensity = time.night * 18;
-
-    if (pipeline) pipeline.render();
-    else renderer.render(scene, camera);
-
-    frameCount++;
-    statTime += dt;
-    if (statTime > 0.5) {
-      fps = frameCount / statTime;
-      frameCount = 0;
-      statTime = 0;
-      const calls = (renderer.info?.render as unknown as { drawCalls?: number; calls?: number })?.drawCalls
-        ?? (renderer.info?.render as unknown as { calls?: number })?.calls
-        ?? 0;
-      ui.setFps(fps, calls);
-    }
-    ui.setTime(time.hour, time.phaseLabel);
-  });
+  uiInstance.setTime(time.hour, time.phaseLabel);
+  uiInstance.toast('点击画面锁定鼠标，开始步行探索', 3600);
+  boot.done();
 
   if (import.meta.env.DEV) {
     (window as any).__qingdao = { scene, camera, renderer, player, time, tour, data, result, ui, pipeline, bloomPass };
   }
-
-  ui.setLoading('完成', 1);
-  await new Promise((resolve) => setTimeout(resolve, 160));
-  ui.hideLoading();
-  ui.toast('点击画面锁定鼠标，从栈桥开始漫游', 3600);
 }
 
 function phaseName(hour: number): string {
@@ -417,16 +434,6 @@ function buildTargets(data: WorldData, _player: PlayerController): TeleportTarge
   const [pierX, pierZ] = lonLatToLocal(120.3149, 36.06035);
   push('zhanqiao', '栈桥', '青岛湾 · 回澜阁', pierX, pierZ, Math.PI);
 
-  const pavilion = findBuilding(data, '回澜阁');
-  if (pavilion) {
-    push('huilange', '回澜阁', '栈桥尽头的八角亭', pavilion.centroid[0], pavilion.centroid[1] - 13, Math.PI);
-  }
-
-  const cathedral = findBuilding(data, '圣弥爱尔');
-  if (cathedral) {
-    push('cathedral', '天主教堂', '圣弥爱尔大教堂', cathedral.centroid[0], cathedral.centroid[1] + 30, 0);
-  }
-
   const [sx, sz] = lonLatToLocal(120.32636, 36.06675);
   push('signal', '信号山', '98m 观景平台', sx - 14, sz + 18, 2.4);
 
@@ -435,31 +442,13 @@ function buildTargets(data: WorldData, _player: PlayerController): TeleportTarge
     push('lighthouse', '小青岛', '白色灯塔', lighthouse.centroid[0] - 13, lighthouse.centroid[1] + 11, yawTo(lighthouse.centroid[0] - 13, lighthouse.centroid[1] + 11, lighthouse.centroid[0], lighthouse.centroid[1]));
   }
 
-  const [thx, thz] = lonLatToLocal(120.3222473, 36.0615606);
-  push('tianhou', '天后宫', '太平路 · 民俗博物馆', thx, thz + 26, 0);
-
-  const governor = findBuilding(data, '总督府');
-  if (governor) push('governor', '总督府', '沂水路 · 德式建筑', governor.centroid[0], governor.centroid[1] + 28, 0);
-
-  const zhongshan = data.streets.find((s) => s.name === '中山路');
-  if (zhongshan) {
-    const [x, z] = nearestPointOnStreet(lonLatToLocal(120.3137, 36.0655)[0], lonLatToLocal(120.3137, 36.0655)[1], zhongshan.points);
-    push('zhongshan', '中山路', '百年商业街', x, z, 0);
-  }
-
   const huashilou = findBuilding(data, '花石楼');
   if (huashilou) {
-    push('badaguan', '八大关', '花石楼 · 万国建筑', huashilou.centroid[0], huashilou.centroid[1] + 34, 0);
+    push('huashilou', '花石楼', '八大关 · 万国建筑', huashilou.centroid[0], huashilou.centroid[1] + 34, 0);
   }
 
   const [mx, mz] = lonLatToLocal(120.38015, 36.06121);
   push('mayfourth', '五四广场', '五月的风', mx, mz + 72, 0);
-
-  const [ox, oz] = lonLatToLocal(120.3892, 36.0580);
-  push('olympic', '奥帆中心', '浮山湾帆船港', ox, oz, 2.2);
-
-  const [tpx, tpz] = lonLatToLocal(120.3490, 36.0522);
-  push('taiping', '太平角', '第二海水浴场', tpx, tpz + 18, 2.9);
 
   return list;
 }
@@ -467,52 +456,40 @@ function buildTargets(data: WorldData, _player: PlayerController): TeleportTarge
 function buildTourKeys(targets: TeleportTarget[]) {
   const get = (id: string) => targets.find((t) => t.id === id);
   const zhan = get('zhanqiao');
-  const hui = get('huilange');
-  const cathedral = get('cathedral');
   const signal = get('signal');
   const lighthouse = get('lighthouse');
-  const governor = get('governor');
-  const badaguan = get('badaguan');
+  const huashilou = get('huashilou');
   const mayfourth = get('mayfourth');
-  const olympic = get('olympic');
 
   const zx = zhan?.x ?? 0;
   const zz = zhan?.z ?? 0;
-  const hx = hui?.x ?? zx;
-  const hz = hui?.z ?? zz + 380;
-  const cx = cathedral?.x ?? -220;
-  const cz = cathedral?.z ?? -880;
+  const hx = zx;
+  const hz = zz + 380;
   const sx = signal?.x ?? 980;
   const sz = signal?.z ?? -690;
   const lx = lighthouse?.x ?? 130;
   const lz = lighthouse?.z ?? 1210;
-  const gx = governor?.x ?? 160;
-  const gz = governor?.z ?? -700;
-  const bx = badaguan?.x ?? 3395;
-  const bz = badaguan?.z ?? 960;
+  const bx = huashilou?.x ?? 3395;
+  const bz = huashilou?.z ?? 960;
   const mx = mayfourth?.x ?? 6974;
   const mz = mayfourth?.z ?? 45;
-  const ox = olympic?.x ?? 8100;
-  const oz = olympic?.z ?? 250;
 
   return [
     { pos: new THREE.Vector3(zx - 40, 42, zz - 170), look: new THREE.Vector3(hx, 8, hz), duration: 9 },
     { pos: new THREE.Vector3(hx + 15, 10, hz - 80), look: new THREE.Vector3(hx, 7, hz), duration: 8 },
-    { pos: new THREE.Vector3(cx - 70, 30, cz + 70), look: new THREE.Vector3(cx, 22, cz), duration: 9 },
-    { pos: new THREE.Vector3(gx - 25, 26, gz + 55), look: new THREE.Vector3(gx, 12, gz), duration: 8 },
     { pos: new THREE.Vector3(sx + 60, 118, sz + 50), look: new THREE.Vector3(hx, 15, hz - 90), duration: 10 },
     { pos: new THREE.Vector3(lx - 95, 32, lz - 55), look: new THREE.Vector3(lx, 9, lz), duration: 9 },
     { pos: new THREE.Vector3(bx - 90, 72, bz + 130), look: new THREE.Vector3(bx, 20, bz), duration: 10 },
     { pos: new THREE.Vector3(bx + 55, 22, bz - 75), look: new THREE.Vector3(bx - 30, 13, bz + 85), duration: 9 },
     { pos: new THREE.Vector3(mx - 90, 46, mz + 110), look: new THREE.Vector3(mx, 22, mz), duration: 10 },
-    { pos: new THREE.Vector3(ox - 95, 38, oz + 90), look: new THREE.Vector3(ox, 6, oz + 20), duration: 9 },
-    { pos: new THREE.Vector3(ox - 120, 96, oz + 280), look: new THREE.Vector3(mx, 28, mz - 80), duration: 10 }
+    { pos: new THREE.Vector3(mx + 120, 96, mz + 280), look: new THREE.Vector3(mx, 28, mz - 80), duration: 10 }
   ];
 }
 
 main().catch((error) => {
   console.error(error);
-  loadingStatus.textContent = `初始化失败：${error instanceof Error ? error.message : String(error)}`;
-  loadingStatus.style.color = '#e98b6a';
-  loadingBar.style.width = '100%';
+  const el = document.createElement('div');
+  el.className = 'boot-status boot-error';
+  el.textContent = `初始化失败：${error instanceof Error ? error.message : String(error)}`;
+  document.body.appendChild(el);
 });

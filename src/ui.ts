@@ -19,6 +19,8 @@ interface UICallbacks {
   onToggleView: () => void;
 }
 
+const HIDDEN_STREETS = new Set(['安徽路', '八关山路', '白求恩路']);
+
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 export class UI {
@@ -35,17 +37,13 @@ export class UI {
   private viewBtn = $<HTMLButtonElement>('view-btn');
   private crosshair = $<HTMLElement>('crosshair');
   private toastEl = $<HTMLDivElement>('toast');
-  private modeTip = $<HTMLElement>('mode-tip');
-  private loading = $<HTMLDivElement>('loading');
-  private loadingStatus = $<HTMLElement>('loading-status');
-  private loadingBar = $<HTMLElement>('loading-bar');
   private toastTimer = 0;
   private streetList: StreetEntry[];
 
   constructor(data: WorldData, callbacks: UICallbacks, targets: TeleportTarget[]) {
     this.data = data;
     this.callbacks = callbacks;
-    this.streetList = data.streets;
+    this.streetList = data.streets.filter((s) => !HIDDEN_STREETS.has(s.name));
 
     for (const preset of TIME_PRESETS) {
       const btn = document.createElement('button');
@@ -90,7 +88,7 @@ export class UI {
     this.tourBtn.addEventListener('click', () => this.callbacks.onToggleTour());
     this.viewBtn.addEventListener('click', () => this.callbacks.onToggleView());
 
-    $<HTMLElement>('street-count').textContent = `${data.streets.length} 条可检索街道`;
+    $<HTMLElement>('street-count').textContent = `${this.streetList.length} 条可检索街道`;
     $<HTMLElement>('stat-buildings').textContent = `${data.buildings.length} 栋建筑`;
     this.renderStreets('');
     this.clearResults();
@@ -139,32 +137,6 @@ export class UI {
     this.toastEl.textContent = message;
     this.toastEl.classList.add('show');
     if (duration > 0) this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('show'), duration);
-  }
-
-  hideModeTip() {
-    this.modeTip.classList.remove('show');
-  }
-
-  showModeTip() {
-    this.modeTip.classList.add('show');
-    window.setTimeout(() => this.modeTip.classList.remove('show'), 3400);
-  }
-
-  setLoading(text: string, progress: number) {
-    this.loadingStatus.textContent = text;
-    this.loadingBar.style.width = `${Math.round(progress * 100)}%`;
-  }
-
-  hideLoading() {
-    this.loading.classList.add('done');
-    window.setTimeout(() => { this.loading.style.display = 'none'; }, 800);
-  }
-
-  showError(message: string) {
-    this.loadingStatus.textContent = message;
-    this.loadingStatus.style.color = '#e98b6a';
-    this.loadingBar.style.width = '100%';
-    this.loadingBar.style.background = '#a33a2a';
   }
 
   setFps(fps: number, calls: number) {

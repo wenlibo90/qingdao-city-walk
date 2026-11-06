@@ -56,11 +56,11 @@ const tmpA = new THREE.Color();
 const tmpB = new THREE.Color();
 
 export class TimeOfDay {
-  hour = 17.5;
-  targetHour = 17.5;
+  hour = 12.5;
+  targetHour = 12.5;
   night = 0;
-  sunDirection = new THREE.Vector3(0.4, 0.5, 0.2).normalize();
-  lightDirection = new THREE.Vector3(0.4, 0.5, 0.2).normalize();
+  sunDirection = new THREE.Vector3(-0.05, 0.92, 0.38).normalize();
+  lightDirection = new THREE.Vector3(-0.05, 0.92, 0.38).normalize();
   private sun: THREE.DirectionalLight;
   private hemi: THREE.HemisphereLight;
   private scene: THREE.Scene;
